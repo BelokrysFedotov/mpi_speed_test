@@ -14,11 +14,11 @@ typedef unsigned char byte;
 
 void printf_speed_(double speed,char*s){
 	if(abs(speed)<10){
-		printf("%.2lf %s",speed,s);
+		printf("%.2lf%s",speed,s);
 	}else if(abs(speed)<100){
-		printf("%.1lf %s",speed,s);
+		printf("%.1lf%s",speed,s);
 	}else{
-		printf("%.0lf %s",speed,s);
+		printf("%.0lf%s",speed,s);
 	}
 }
 void printf_speed(double speed){
@@ -31,6 +31,30 @@ void printf_speed(double speed){
 	if(abs(speed)<1024){printf_speed_(speed,"GB/s");return;}
 	speed/=1024;
 	if(abs(speed)<1024){printf_speed_(speed,"TB/s");return;}
+}
+
+void printf_size(double size){
+	if(abs(size)<1024){printf_speed_(size,"B");return;}
+	size/=1024;
+	if(abs(size)<1024){printf_speed_(size,"KB");return;}
+	size/=1024;
+	if(abs(size)<1024){printf_speed_(size,"MB");return;}
+	size/=1024;
+	if(abs(size)<1024){printf_speed_(size,"GB");return;}
+	size/=1024;
+	if(abs(size)<1024){printf_speed_(size,"TB");return;}
+}
+
+void printf_counts(double counts){
+	if(abs(counts)<1000){printf("%.0lf",counts);return;}
+	counts/=1000;
+	if(abs(counts)<1000){printf_speed_(counts,"K");return;}
+	counts/=1000;
+	if(abs(counts)<1000){printf_speed_(counts,"M");return;}
+	counts/=1000;
+	if(abs(counts)<1000){printf_speed_(counts,"G");return;}
+	counts/=1000;
+	if(abs(counts)<1000){printf_speed_(counts,"T");return;}
 }
 
 int gen_traffic(int from,int to,int size, int count){
@@ -166,8 +190,8 @@ int main(int argc, char *argv[]) {
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	if(rank==rank_to){
-		printf("size %d KB\t",size);
-		printf("count %d \t",count);
+		printf("size ");printf_size(size);printf("\t");
+		printf("count ");printf_counts(count);printf("\t");
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
 
