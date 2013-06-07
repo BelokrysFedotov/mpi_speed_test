@@ -112,6 +112,10 @@ int gen_traffic(int from,int to,int size, int count){
 
 		printf("avr speed: ");printf_speed(speed_sum/iter);printf("\t");
 
+	}else{
+		for(iter=0;iter<count;iter++){
+			MPI_Barrier(MPI_COMM_WORLD);
+		}
 	}
 
 
