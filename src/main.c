@@ -33,27 +33,22 @@ void printf_speed(double speed){
 	if(abs(speed)<1024){printf_speed_(speed,"TB/s");return;}
 }
 
-void printf_speed_d(double speed,double dspeed){
-	printf_speed(speed);
-	printf(" +/- ");
-	printf_speed(dspeed);
-}
-
-
-int gen_traffic(int from,int to,size_t size, int count){
+int gen_traffic(int from,int to,int size, int count){
 	int rank,iter,i,namelen,validation;
-	char processor_name[MPI_MAX_PROCESSOR_NAME];
+	char name[MPI_MAX_PROCESSOR_NAME];
 	byte*buffer;
 
-	double tss,tsr,trs,trr,tsy,try,sending_time,speed,dspeed;
+	double tss,tsr,trs,trr,tsy,try,sending_time,speed;
 	double speed_sum;
+
+	MPI_Status status;
 
 	md5_state_t state;
 	md5_byte_t digest[MD5_SIZE];
 	md5_byte_t digest_control[MD5_SIZE];
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Get_processor_name(processor_name, &namelen);
+	MPI_Get_processor_name(name, &namelen);
 	if(from == rank){
 		for(iter=0;iter<count;iter++){
 			buffer = (char*)malloc(size*sizeof(byte));
@@ -64,14 +59,6 @@ int gen_traffic(int from,int to,size_t size, int count){
 			md5_append(&state, (const md5_byte_t*)buffer, size*sizeof(byte));
 			md5_finish(&state, digest);
 
-	//		printf("(%2d)%s: send data (\"",rank,processor_name);
-	//		for (i=0;i<32&&i<size;i++)printf("%02x",buffer[i]);
-	//		printf("\")\n");
-	//		printf("(%2d)%s: md5sum ",rank,processor_name);
-	//		for (i=0;i<MD5_SIZE;i++)
-	//		    printf("%02x", digest[i]);
-	//		printf("\n");
-
 			MPI_Barrier(MPI_COMM_WORLD);
 			tsy = MPI_Wtime();
 			MPI_Send(&tsy,1,MPI_DOUBLE,to,MPI_TAG_TIME,MPI_COMM_WORLD);
@@ -79,7 +66,7 @@ int gen_traffic(int from,int to,size_t size, int count){
 			tss = MPI_Wtime();
 			MPI_Send(&tss,1,MPI_DOUBLE,to,MPI_TAG_TIME,MPI_COMM_WORLD);
 			MPI_Send(buffer,size*sizeof(byte),MPI_BYTE,to,MPI_TAG_DATA,MPI_COMM_WORLD);
-			MPI_Send(&digest,MD5_SIZE*sizeof(md5_byte_t),MPI_BYTE,to,MPI_TAG_HASH,MPI_COMM_WORLD);
+			MPI_Send(digest,MD5_SIZE*sizeof(md5_byte_t),MPI_BYTE,to,MPI_TAG_HASH,MPI_COMM_WORLD);
 			tsr = MPI_Wtime();
 			MPI_Send(&tsr,1,MPI_DOUBLE,to,MPI_TAG_TIME,MPI_COMM_WORLD);
 
@@ -92,15 +79,15 @@ int gen_traffic(int from,int to,size_t size, int count){
 			buffer = (char*)malloc(size*sizeof(byte));
 
 			MPI_Barrier(MPI_COMM_WORLD);
-			MPI_Recv(&tsy,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,0);
+			MPI_Recv(&tsy,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,&status);
 			try = MPI_Wtime();
 
-			MPI_Recv(&tss,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,0);
+			MPI_Recv(&tss,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,&status);
 			trs = MPI_Wtime();
-			MPI_Recv(buffer,size*sizeof(byte),MPI_BYTE,from,MPI_TAG_DATA,MPI_COMM_WORLD,0);
-			MPI_Recv(digest,MD5_SIZE*sizeof(md5_byte_t),MPI_BYTE,from,MPI_TAG_HASH,MPI_COMM_WORLD,0);
+			MPI_Recv(buffer,size*sizeof(byte),MPI_BYTE,from,MPI_TAG_DATA,MPI_COMM_WORLD,&status);
+			MPI_Recv(digest,MD5_SIZE*sizeof(md5_byte_t),MPI_BYTE,from,MPI_TAG_HASH,MPI_COMM_WORLD,&status);
 			trr = MPI_Wtime();
-			MPI_Recv(&tsr,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,0);
+			MPI_Recv(&tsr,1,MPI_DOUBLE,from,MPI_TAG_TIME,MPI_COMM_WORLD,&status);
 
 			md5_init(&state);
 			md5_append(&state, (const md5_byte_t*)buffer, size*sizeof(byte));
@@ -109,65 +96,81 @@ int gen_traffic(int from,int to,size_t size, int count){
 			validation = 1;
 			for(i=0;i<MD5_SIZE;i++)if(digest[i]!=digest_control[i])validation = 0;
 
-
-	//		printf("(%2d)%s: resv data (\"",rank,processor_name);
-	//		for (i=0;i<32&&i<size;i++)printf("%02x",buffer[i]);
-	//		printf("\")\n");
-
-	//		printf("(%2d)%s: md5sum ",rank,processor_name);
-	//		for (i=0;i<MD5_SIZE;i++)
-	//		    printf("%02x", digest[i]);
-	//		printf("\n");
-	//
-	//		printf("(%2d)%s: md5sum ",rank,processor_name);
-	//		for (i=0;i<MD5_SIZE;i++)
-	//		    printf("%02x", digest_control[i]);
-	//		printf("\n");
-
-			printf("Validation: ");
-			if(validation){
-				printf("OK\n");
-			}else{
-				printf("NONE\n");
+			if(!validation){
+				printf("Validation error\n");
+				exit(2);
 			}
-
-//			printf("Sender:\t sync %lf\tsend %lf\trecv %lf\tdiff %lf\n",tsy,tss,tsr,tsr-tss);
-//			printf("Recver:\t sync %lf\tsend %lf\trecv %lf\tdiff %lf\n",try,trs,trr,trr-trs);
-//			printf("Diffs :\t sync %lf\tsend %lf\trecv %lf\tdiff %lf\n",tsy-try,tss-trs,tsr-trr,tsr-tss-trr+trs);
 
 			sending_time = trr - tss + tsy - try;
 
 			speed = (double)(size+MD5_SIZE)/sending_time;
-			dspeed = speed*1.e-3/sending_time;
 
 			speed_sum += speed;
-			printf("Speed: ");printf_speed(speed);printf("\n");
-			printf("Avr Speed: ");printf_speed(speed_sum/(iter+1));printf("\n");
 
 			free(buffer);
 		}
 
+		printf("avr speed: ");printf_speed(speed_sum/iter);printf("\t");
+
 	}
+
+
+
 	return 0;
 }
 
 int main(int argc, char *argv[]) {
-  int numprocs, rank, namelen;
-  char processor_name[MPI_MAX_PROCESSOR_NAME];
-  double curtime;
 
+	int numprocs, rank, namelen;
+	char name[MPI_MAX_PROCESSOR_NAME];
 
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Get_processor_name(processor_name, &namelen);
+	MPI_Status status;
 
-  curtime = MPI_Wtime();
+	if(argc<5){
+		if(rank==0)printf("Run programs with parameters: `program %%number_from%% %%number_to%% %%size_in_kb%% %%count_of_iterations%%`\n");
+		return 1;
+	}
 
-  printf("Process %d on %s out of %d (%lf)\n", rank, processor_name, numprocs, curtime);
+	int rank_from,rank_to,size,count;
+	rank_from	= atoi(argv[1]);
+	rank_to		= atoi(argv[2]);
+	size		= atoi(argv[3]);
+	count		= atoi(argv[4]);
 
-  if(numprocs>=2)gen_traffic(0,1,1024*1024*24,10);
+	if(rank_from>=numprocs || rank_to>=numprocs){
+		if(rank==0)printf("Ranks out of count of procs\n");
+		return 1;
+	}
 
-  MPI_Finalize();
+	if(rank==rank_from){
+		MPI_Get_processor_name(name, &namelen);
+		MPI_Send(name,MPI_MAX_PROCESSOR_NAME,MPI_CHAR,rank_to,0,MPI_COMM_WORLD);
+	}else if(rank==rank_to){
+		MPI_Recv(name,MPI_MAX_PROCESSOR_NAME,MPI_CHAR,rank_from,0,MPI_COMM_WORLD,&status);
+		printf("form %s [%d]\t",name,rank_from);
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	if(rank==rank_to){
+		MPI_Get_processor_name(name, &namelen);
+		printf("to %s [%d]\t",name,rank_to);
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	if(rank==rank_to){
+		printf("size %d KB\t",size);
+		printf("count %d \t",count);
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	gen_traffic(rank_from,rank_to,size*1024,count);
+
+	if(rank==rank_to)printf("\n");
+
+	MPI_Finalize();
+	return 0;
 }
